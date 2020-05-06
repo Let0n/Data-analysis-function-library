@@ -18,7 +18,7 @@ def minus_diff_fermi(w, V, T):
 
 def didv(w, A, V, T, dos):
     '''Thermally broadening of DOS as dI/dV. dos and w are same-length 1d arrays'''
-    return A*np.trapz(dos*minus_diff_fermi(w, V, T), x=w)
+    return A*np.trapz(dos*minus_diff_fermi(w, V, T), x=w)/np.trapz(minus_diff_fermi(w, en[ix], T), x=w)
 
 def tbmodel(w, t, Gamma, Delta_0, N_kmesh=1024):
     '''5-component tight-binding model for BSCCO'''
