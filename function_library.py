@@ -45,6 +45,14 @@ def res_phase(w, t0, w0, Q):
     '''Lorentzian phase of frequency response sweep, in degree'''
     return t0 + np.arctan2(1, 2*Q*(w-w0)/w0)/np.pi*180
 
+def ABCD2S(A, B, C, D, Z0=50.0):
+    '''Convert ABCD parameters to S parameters'''
+    S11 = (A+B/Z0-C*Z0-D)/(A+B/Z0+C*Z0+D)
+    S12 = 2*(A*D-B*C)/(A+B/Z0+C*Z0+D)
+    S21 = 2/(A+B/Z0+C*Z0+D)
+    S22 = (-A+B/Z0-C*Z0+D)/(A+B/Z0+C*Z0+D)
+    return S11, S12, S21, S22
+
 def gauss2dkernal(A, sigma):
     '''2D Gaussian kernal for smoothing'''
     col, row = A.shape
