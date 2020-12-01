@@ -18,7 +18,32 @@ def minus_diff_fermi(w, V, T):
 
 def didv(w, A, V, T, dos):
     '''Thermally broadening of DOS as dI/dV. dos and w are same-length 1d arrays'''
-    return A*np.trapz(dos*minus_diff_fermi(w, V, T), x=w)/np.trapz(minus_diff_fermi(w, en[ix], T), x=w)
+    '''
+    Example:
+    w = linspace(15, -15, 3001)*1e-3 # must be wider than bias+2kT/e
+    bias = linspace(-10, 10, 1001)*1e-3
+    tmp_dos = dynes(w, 1.4e-3, 0.1e-3, 1.0)
+    tmp_didv = zeros_like(bias)
+    for ix in range(len(bias)):
+    tmp_didv[ix] = didv(w, 1.0, bias[ix], 4.0, tmp_dos)
+    '''
+    return A*np.trapz(dos*minus_diff_fermi(w, V, T), x=w)/np.trapz(minus_diff_fermi(w, V, T), x=w)
+
+def tbroad_dynes(v, delta, gamma, amp, T):
+    '''Thermally broadening dynes'''
+    k_B = 8.617e-5
+    if not len(v):
+        print('v must be an 1d array, not scalar!')
+        return np.zeros_like(v)
+    else:
+        dw = min(abs(np.diff(v)[0])/10, k_B*T/10)
+        w = np.arange(v.min()-10*k_B*T, v.max()+10*k_B*T, dw) # enlarged energy vector for integrals
+        dos = dynes(w, delta, gamma, amp)
+        didv = np.zeros_like(v)
+        for ix in range(len(v)):
+            didv[ix] = np.trapz(dos*minus_diff_fermi(w, v[ix], T), x=w)/np.trapz(minus_diff_fermi(w, v[ix], T), x=w)
+        return didv
+
 
 def tbmodel(w, t, Gamma, Delta_0, N_kmesh=1024):
     '''5-component tight-binding model for BSCCO'''
