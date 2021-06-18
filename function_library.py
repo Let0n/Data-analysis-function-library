@@ -60,7 +60,78 @@ def tbmodel(w, t, Gamma, Delta_0, N_kmesh=1024):
         dos[iw] = sum(A[iw])
     return A, dos # spectral function and density of states
 
-
+def deconvSCtip(v, g, delta_t, gamma_t, T, eps=None, alpha=1.0,  method='Twomey', dynes='imagE'):
+    '''
+    Deconvolute an SIS spectrum based from known tip gap and broadening at finite temperature.
+    Input:
+        v - voltage array
+        g - measured SIS spectrum
+        delta_t, gamma_t - known tip gap and broadening
+        T - temperature
+        eps - energy array for deconvolution; if None, then will copy v
+        alpha - damping factor to smooth the result (not used for 'pinv' method)
+        method - 'Twomey', 'NNLS', or 'pinv', method to be used for deconvolution. 
+                 'Twomey': approximate solution of Fredholm Integral Equation of the first kind (DOI: 10.1145/321150.321157)
+                 'nnls': non-negative least square solver with damping factor alpha
+                 'pinv': (pseudo-)inverse (not recommended)
+        dynes - Dynes function to be used. 'imagE' adds broadening to the energy, while 'imagD' adds broadening to Delta
+    Output:
+        LDOS - sample density of states (approximation)
+        eps - energy array
+        reconv - reconvoluted spectrum (for validation)
+        Residual will be printed out.
+    '''
+    def makeH(dim) :    
+        '''Make H matrix for estimating Fredholm equations as in (Twomey 1963).'''
+        # create (symmetric) diagonal vectors
+        d2 = numpy.ones(dim - 2)
+        d1 = numpy.concatenate(([-2], numpy.repeat(-4, dim - 3), [-2]))
+        d0 = numpy.concatenate(([1, 5], numpy.repeat(6, dim - 4), [5, 1]))
+        # make matrix with diagonals
+        Hmat = numpy.diag(d1, 1) + numpy.diag(d2, 2)
+        Hmat = Hmat + Hmat.T
+        numpy.fill_diagonal(Hmat, d0)
+        return Hmat
+    
+    v = asarray(v)
+    dv = diff(v)[0] # must be equally distace array
+    vv = linspace(v.min()-len(v)*dv, v.max()+len(v)*dv, len(v)*3)
+    # extrapolate g to minimize edge effects, use quantity[len(v):2*len(v)] to recover
+    gg = hstack((ones_like(v)*g[0], g, ones_like(v)*g[-1])) 
+    if eps is None:
+        eps = copy(vv) # then x will be a square matrix
+    En_g, eV_g = np.meshgrid(eps, vv)
+    x = En_g + eV_g
+    if dynes == 'imagE':
+        rho_t = sign(x)*real((x+1j*gamma_t)/sqrt((x+1j*gamma_t)**2 - delta_t**2))
+    elif dynes == 'imagD':
+        rho_t = sign(x)*real(x/sqrt(x**2 - (delta_t+1j*gamma_t)**2))
+    else:
+        # experimental: 
+        rho_t = sign(x)*real(x/sqrt(x**2+1j*gamma_t*x*2 - delta_t**2))
+    drho_t = np.gradient(rho_t, axis=0)/dv
+    fer = fermi(En_g, T)
+    fer_V = fermi(x, T)
+    dfer_V = np.gradient(fer_V, axis=0)/dv
+    dfer_V[np.isnan(dfer_V)] = 0
+    A = (drho_t * (fer - fer_V) + rho_t * dfer_V) * diff(eps)[0]
+    if method == 'Twomey':
+        H = makeH(len(eps))
+        LDOS = np.linalg.solve(A.T @ A + alpha * H , A.T @ gg)
+    elif method == 'nnls':
+        LDOS, _ = scipy.optimize.nnls(vstack((A, alpha*eye(A.shape[1]))), concatenate((gg, zeros_like(eps))))
+#         LDOS /= diff(eps)[0]
+    elif method == 'pinv':
+        Ainv = scipy.linalg.pinv(A)
+        LDOS = np.flipud(Ainv @ gg)
+    else:
+        raise ValueError("Choose one method among 'Twomey', 'NNLS', and 'pinv'.")
+    reconv_full = A @ LDOS
+    reconv = reconv_full[len(v):2*len(v)]
+    res = sqrt(sum((reconv-g)**2))
+    print('Residual %.3f'%res, end='\r')
+    return LDOS, eps, reconv
+    
 # Math
 
 def res_amp(w, amp, w0, Q):
