@@ -94,12 +94,14 @@ def deconvSCtip(v, g, delta_t, gamma_t, T, eps=None, alpha=1.0,  method='Twomey'
         return Hmat
     
     v = asarray(v)
-    dv = diff(v)[0] # must be equally distace array
+    dv = abs(diff(v)[0]) # must be equally distace array
     vv = linspace(v.min()-len(v)*dv, v.max()+len(v)*dv, len(v)*3)
     # extrapolate g to minimize edge effects, use quantity[len(v):2*len(v)] to recover
     gg = hstack((ones_like(v)*g[0], g, ones_like(v)*g[-1])) 
+    trim = False
     if eps is None:
         eps = copy(vv) # then x will be a square matrix
+        trim = True #trim output LDOS later
     En_g, eV_g = np.meshgrid(eps, vv)
     x = En_g + eV_g
     if dynes == 'imagE':
@@ -110,8 +112,9 @@ def deconvSCtip(v, g, delta_t, gamma_t, T, eps=None, alpha=1.0,  method='Twomey'
         # experimental: 
         rho_t = sign(x)*real(x/sqrt(x**2+1j*gamma_t*x*2 - delta_t**2))
     drho_t = np.gradient(rho_t, axis=0)/dv
-    fer = fermi(En_g, T)
-    fer_V = fermi(x, T)
+    k_B = 8.617e-5 #eV/K
+    fer = 1./(1+exp(En_g/k_B/T))
+    fer_V = 1./(1+exp(x/k_B/T))
     dfer_V = np.gradient(fer_V, axis=0)/dv
     dfer_V[np.isnan(dfer_V)] = 0
     A = (drho_t * (fer - fer_V) + rho_t * dfer_V) * diff(eps)[0]
@@ -130,6 +133,9 @@ def deconvSCtip(v, g, delta_t, gamma_t, T, eps=None, alpha=1.0,  method='Twomey'
     reconv = reconv_full[len(v):2*len(v)]
     res = sqrt(sum((reconv-g)**2))
     print('Residual %.3f'%res, end='\r')
+    if trim:
+        LDOS = LDOS[len(v):2*len(v)]
+        eps = copy(v)
     return LDOS, eps, reconv
     
 # Math
