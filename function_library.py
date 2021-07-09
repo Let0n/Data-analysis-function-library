@@ -44,6 +44,74 @@ def tbroad_dynes(v, delta, gamma, amp, T):
             didv[ix] = np.trapz(dos*minus_diff_fermi(w, v[ix], T), x=w)/np.trapz(minus_diff_fermi(w, v[ix], T), x=w)
         return didv
 
+def maki(E, d, B, gamma, b, z, max_iter=1000, abs_tol=1e-8, spin=None, initial='random'):
+    '''Maki model for SC under field w/ depairing and SO scattering'''
+    h = 5.79e-5*B
+    def u_plus_minus(E, d, h, gamma, b, z, max_iter=1000, abs_tol=1e-8):
+        up, un = 2*rand(len(E))-1 + (2*rand(len(E))-1) * 1j, 2*rand(len(E))-1 + (2*rand(len(E))-1) * 1j
+        e = E + 1j * gamma
+        for m in range(max_iter):
+            up_m = (e-h)/d + z*up/sqrt(1-up**2) + b*(un-up)/sqrt(1-un**2)
+            resp = sum(abs(up_m-up))
+            up = copy(up_m)
+            un_m = (e+h)/d + z*up/sqrt(1-un**2) + b*(up-un)/sqrt(1-up**2)
+            resn = sum(abs(un_m-un))
+            un = copy(un_m)
+    #         print('Iteration %d, residual %.3e'%(m+1, resp+resn))
+            if resp + resn < abs_tol:
+                break 
+            if m+1 == max_iter:
+                    print('Reaches maximal number of iterations, residual = %.3E.'%(resp+resn))
+        return up, un
+    
+    if b and z:
+        results = zeros((len(E), 4), dtype=complex128)
+        y0 = 2*rand(4)-1 +( 2*rand(4)-1) * 1j # random initial guess
+        if initial == 'in_phase':
+        # approximated in-phase solution
+            up1, un1 = u_plus_minus(E, d, h, gamma, 0, z, max_iter, abs_tol) # b=0
+            up2, un2 = u_plus_minus(E, d, h, gamma, b, 0, max_iter, abs_tol) # z=0
+            up0, un0 = up1+up2, un1+un2 # sum is in phase
+        
+        for k in range(len(E)):
+            e = E[k] + 1j * gamma
+            if initial == 'in_phase':
+                y0 = [-0.5*(up0[k]/sqrt(1-up0[k]**2)+un0[k]/sqrt(1-un0[k]**2)), -0.5/h*(up0[k]/sqrt(1-up0[k]**2)-un0[k]/sqrt(1-un0[k]**2)), 
+                 0.5/d*(1/sqrt(1-up0[k]**2)+1/sqrt(1-un0[k]**2)), -0.5/h/d*(1/sqrt(1-up0[k]**2)-1/sqrt(1-un0[k]**2))]
+            F = lambda y: array([y[0] + e*y[1] + h**2*y[3] - d*z*(y[0]*y[1]-h**2*y[2]*y[3]),
+                                 y[1] - y[2] + e*y[3] + d*z*(y[1]*y[2]-y[0]*y[3]) - 2*b*d*(y[1]*y[2]+y[0]*y[3]),
+                                 y[0]**2 + h**2 * y[2]**2 - d**2*(y[1]**2+h**2*y[3]**2) + 1,
+                                 y[0]*y[2] + d**2*y[1]*y[3]], dtype=complex128)
+            J = lambda y: array([[1-d*z*y[1], e-d*z*y[0], d*z*h**2*y[3], h**2+h**2*d*z*y[2]],
+                                 [-d*z*y[3]-2*b*d*y[3], 1+d*z*y[2]-2*b*d*y[2], -1+d*z*y[1]-2*b*d*y[1], e-d*z*y[0]-2*b*d*y[0]],
+                                 [2*y[0], -2*d**2*y[1], 2*h**2*y[2], -2*d**2*h**2*y[3]],
+                                 [y[2], d**2*y[3], y[0], d**2*y[1]]], dtype=complex128)
+            for m in range(max_iter):
+                ym = y0 - linalg.inv(J(y0)) @ F(y0)
+                if sum(abs(ym-y0)) < abs_tol:
+                    y = copy(ym)
+                    break
+                if m+1 == max_iter:
+                    print('E = %.2fmeV reaches maximal number of iterations, residual = %.3e'%(E[k]*1e3, sum(abs(ym-y0))))
+                y0 = copy(ym)
+            y = copy(ym)
+            results[k] = y
+        up = -1/d * (results[:, 0] + h * results[:, 2]) / (results[:, 1] - h * results[:, 3])
+        un = -1/d * (results[:, 0] - h * results[:, 2]) / (results[:, 1] + h * results[:, 3])
+    else:
+        up, un = u_plus_minus(E, d, h, gamma, b, z, max_iter, abs_tol)
+    rho_p = 0.5 * abs(real((up)/sqrt((up)**2-1)))
+    rho_n = 0.5 * abs(real((un)/sqrt((un)**2-1)))
+    rho = rho_p + rho_n
+    if spin == 'up':
+        return rho_p
+    elif spin == 'down':
+        return rho_n
+    elif spin == 'both':
+        return rho, rho_p, rho_n
+    else:
+        # default only return total DOS
+        return rho
 
 def tbmodel(w, t, Gamma, Delta_0, N_kmesh=1024):
     '''5-component tight-binding model for BSCCO'''
