@@ -1,3 +1,10 @@
+# Customized Colormap
+from matplotlib.colors import LinearSegmentedColormap as LSC
+cm_nl = LSC.from_list('gray', [(0.0, '0.1'), (0.2, '0.8'), (0.6, 'lightyellow'), (1.0, 'gold')])
+figure(figsize=(3, 1), dpi=300)
+imshow([linspace(0, 1, 256), linspace(0, 1, 256)], cmap=cm_nl, aspect=5)
+gca().set_axis_off()
+
 import numpy as np
 import matplotlib as mpl
 
